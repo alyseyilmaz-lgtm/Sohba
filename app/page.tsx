@@ -6,7 +6,31 @@ import JSZip from "jszip";
 import { Slide, type SlideView } from "@/components/Slide";
 import { BACKGROUND_PRESETS, defaultBackgroundId } from "@/lib/backgrounds";
 import { DEMO_CAROUSEL } from "@/lib/demo";
+import { buildManualPrompt } from "@/lib/prompt";
 import type { Carousel, GenerateOptions } from "@/lib/types";
+
+// Extrait un objet Carousel d'une réponse Claude (mode manuel), même si elle
+// contient un peu de texte ou un bloc ```json autour.
+function extractCarousel(raw: string): Carousel {
+  let text = raw.trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) text = fence[1].trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error("Aucun JSON trouvé dans la réponse collée.");
+  }
+  const obj = JSON.parse(text.slice(start, end + 1));
+  if (!obj.cover || !Array.isArray(obj.slides)) {
+    throw new Error("Le JSON collé n'a pas la structure attendue.");
+  }
+  return {
+    cover: obj.cover,
+    slides: obj.slides,
+    description: obj.description ?? "",
+    hashtags: Array.isArray(obj.hashtags) ? obj.hashtags : [],
+  };
+}
 
 const PREVIEW_W = 220;
 const SCALE = PREVIEW_W / 1080;
@@ -22,6 +46,10 @@ export default function Page() {
     handle: "",
     language: "français",
   });
+
+  const [mode, setMode] = useState<"manual" | "api">("manual");
+  const [pasted, setPasted] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -109,6 +137,25 @@ export default function Page() {
       setError(e instanceof Error ? e.message : "Erreur inattendue.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyPrompt() {
+    await navigator.clipboard.writeText(buildManualPrompt(sohba, opts));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function buildFromPaste() {
+    setError(null);
+    try {
+      loadCarousel(extractCarousel(pasted));
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? `Impossible de lire la réponse : ${e.message}`
+          : "Réponse illisible."
+      );
     }
   }
 
@@ -225,6 +272,24 @@ export default function Page() {
         <div>
           <div className="panel">
             <h2>La sohba</h2>
+
+            <div className="seg" role="tablist" aria-label="Mode">
+              <button
+                className={mode === "manual" ? "active" : ""}
+                onClick={() => setMode("manual")}
+                type="button"
+              >
+                Manuel · gratuit
+              </button>
+              <button
+                className={mode === "api" ? "active" : ""}
+                onClick={() => setMode("api")}
+                type="button"
+              >
+                Automatique · clé API
+              </button>
+            </div>
+
             <label className="field">
               <span>Collez ici le texte de la sohba</span>
               <textarea
@@ -311,22 +376,58 @@ export default function Page() {
               />
             </label>
 
-            <button
-              className="btn btn-primary"
-              onClick={generate}
-              disabled={loading || sohba.trim().length < 40}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" /> Génération en cours…
-                </>
-              ) : (
-                "Générer le carrousel"
-              )}
-            </button>
+            {mode === "api" ? (
+              <button
+                className="btn btn-primary"
+                onClick={generate}
+                disabled={loading || sohba.trim().length < 40}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner" /> Génération en cours…
+                  </>
+                ) : (
+                  "Générer le carrousel"
+                )}
+              </button>
+            ) : (
+              <>
+                <div className="step">Étape 1 — copier l'instruction</div>
+                <button
+                  className="btn btn-primary"
+                  onClick={copyPrompt}
+                  disabled={sohba.trim().length < 40}
+                >
+                  {copied ? "Copié ✓" : "Copier l'instruction pour Claude"}
+                </button>
+                <p className="hint">
+                  Ouvrez <strong>claude.ai</strong> (votre abonnement), collez,
+                  envoyez. Claude répondra par un bloc de texte (du JSON).
+                </p>
+
+                <div className="step">Étape 2 — coller la réponse</div>
+                <label className="field">
+                  <span>Collez ici la réponse de Claude</span>
+                  <textarea
+                    value={pasted}
+                    onChange={(e) => setPasted(e.target.value)}
+                    placeholder='{ "cover": { … }, "slides": [ … ] }'
+                    style={{ minHeight: 120 }}
+                  />
+                </label>
+                <button
+                  className="btn btn-primary"
+                  onClick={buildFromPaste}
+                  disabled={pasted.trim().length < 10}
+                >
+                  Construire le carrousel
+                </button>
+              </>
+            )}
             {error && <div className="error">{error}</div>}
           </div>
 
+          {mode === "api" && (
           <div className="panel">
             <h2>Clé API</h2>
             <label className="field">
@@ -351,6 +452,7 @@ export default function Page() {
               collez votre clé ici. Obtenez-la sur console.anthropic.com.
             </p>
           </div>
+          )}
         </div>
 
         {/* ---------------------------------------------------------------- */}

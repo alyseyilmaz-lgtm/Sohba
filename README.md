@@ -10,6 +10,17 @@ L'extraction est réalisée par **Claude (Opus 4.8)** d'Anthropic.
 
 ![Aperçu](docs/apercu.png)
 
+## Deux modes
+
+L'application propose deux façons de générer le contenu :
+
+- **Manuel · gratuit (par défaut)** — vous copiez une instruction prête à l'emploi,
+  vous la collez dans **claude.ai** (votre abonnement existant), puis vous recollez
+  la réponse de Claude dans l'application qui fabrique les visuels. **Aucune clé API,
+  aucun paiement.**
+- **Automatique · clé API** — l'application appelle directement l'API Anthropic.
+  Plus fluide (un seul clic) mais facturé à l'usage et nécessite une clé API.
+
 ---
 
 ## Fonctionnalités
